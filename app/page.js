@@ -148,10 +148,10 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
 
   const fileRefs = {
-    porter:  [useRef(), useRef(), useRef()],
-    pest:    [useRef(), useRef(), useRef()],
-    finance: [useRef(), useRef(), useRef()],
-    news:    [useRef(), useRef(), useRef()],
+    porter:  [useRef(null), useRef(null), useRef(null)],
+    pest:    [useRef(null), useRef(null), useRef(null)],
+    finance: [useRef(null), useRef(null), useRef(null)],
+    news:    [useRef(null), useRef(null), useRef(null)],
   };
 
   const handleFileAdd = (key, file) => {
@@ -212,7 +212,7 @@ ${experience.languages.map(l => `- ${l.lang} ${l.test} ${l.score}`).join("\n") |
 지원동기 전문만 작성해 주세요.`;
 
     try {
-      const response = await fetch("/api/generate", {
+      const response = await fetch("useRef(null)", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }),
