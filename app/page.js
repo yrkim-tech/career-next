@@ -51,7 +51,7 @@ const css = `
   .header h1 { font-size: 28px; font-weight: 700; color: #0F172A; letter-spacing: -0.5px; margin-bottom: 0.75rem; }
   .header p { font-size: 14px; color: #64748B; line-height: 1.8; max-width: 500px; margin: 0 auto; }
 
-  .steps-wrap { display: flex; gap: 4px; margin-bottom: 1.5rem; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; flex-wrap: wrap; }
+  .steps-wrap { display: flex; gap: 4px; margin-bottom: 1.5rem; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; flex-wrap: wrap; justify-content: center; }}
   .steps-wrap::-webkit-scrollbar { display: none; }
   .step-btn { display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 99px; border: 1.5px solid #E2E8F0; background: white; color: #94A3B8; font-size: 11px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: all 0.2s ease; font-family: inherit; }
   .step-btn:hover { background: #F8FAFC; }
