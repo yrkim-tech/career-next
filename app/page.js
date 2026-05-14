@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const STEPS = [
   { id: "profile", label: "개인프로필", icon: "👤" },
@@ -39,6 +39,17 @@ const JOBS = [
 ];
 
 const DEFAULT_STAR = { title: "", situation: "", task: "", action: "", result: "" };
+
+const DEFAULT_PROFILE = { name: "", major: "", minor: "", grade: "", gender: "", gpa: "", disc: "" };
+const DEFAULT_EXPERIENCE = {
+  activities: [{ type: "", name: "", period: "", description: "" }],
+  certs: [{ name: "", grade: "", year: "" }],
+  languages: [{ lang: "", test: "", score: "" }],
+};
+
+const STORAGE_KEY_PROFILE = "whyus_profile";
+const STORAGE_KEY_EXPERIENCE = "whyus_experience";
+const STORAGE_KEY_STARS = "whyus_stars";
 
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
@@ -121,12 +132,21 @@ const css = `
   .generate-btn:hover { background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); transform: translateY(-1px); }
   .generate-btn:disabled { background: #E2E8F0; color: #94A3B8; cursor: not-allowed; box-shadow: none; transform: none; }
 
+  .download-btn { width: 100%; padding: 13px; border: 2px solid #10B981; border-radius: 14px; background: white; color: #065F46; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; }
+  .download-btn:hover { background: #F0FDF8; }
+  .download-btn:disabled { border-color: #E2E8F0; color: #94A3B8; cursor: not-allowed; }
+
   .result-box { background: #FAFAFA; border-radius: 14px; padding: 1.25rem 1.5rem; font-size: 14px; line-height: 1.9; color: #334155; white-space: pre-wrap; border: 1px solid #F1F5F9; }
   .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
   .result-title { font-size: 14px; font-weight: 700; color: #1E293B; }
   .copy-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1.5px solid #E2E8F0; border-radius: 10px; background: white; color: #64748B; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; }
   .copy-btn:hover { border-color: #3B82F6; color: #3B82F6; background: #EFF6FF; }
   .result-note { margin-top: 12px; font-size: 11px; color: #94A3B8; line-height: 1.6; }
+
+  /* 저장 상태 배너 */
+  .save-banner { display: flex; align-items: center; justify-content: space-between; background: #F0FDF8; border: 1px solid #D1FAE5; border-radius: 12px; padding: 10px 16px; margin-bottom: 1rem; font-size: 12px; color: #065F46; }
+  .save-banner-text { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+  .reset-link { font-size: 11px; color: #EF4444; cursor: pointer; text-decoration: underline; background: none; border: none; font-family: inherit; }
 
   .nav { display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #F1F5F9; }
   .nav-prev { display: flex; align-items: center; gap: 6px; padding: 10px 20px; border: 1.5px solid #E2E8F0; border-radius: 12px; background: white; color: #64748B; font-size: 14px; font-weight: 500; cursor: pointer; font-family: inherit; }
@@ -143,14 +163,23 @@ const css = `
   .fade-up { animation: fadeUp 0.3s ease forwards; }
 `;
 
+// localStorage 헬퍼
+function loadFromStorage(key, fallback) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch { return fallback; }
+}
+function saveToStorage(key, value) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
 export default function Home() {
   const [step, setStep] = useState(0);
-  const [profile, setProfile] = useState({ name: "", major: "", minor: "", grade: "", gender: "", gpa: "", disc: "" });
-  const [experience, setExperience] = useState({
-    activities: [{ type: "", name: "", period: "", description: "" }],
-    certs: [{ name: "", grade: "", year: "" }],
-    languages: [{ lang: "", test: "", score: "" }],
-  });
+  const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  const [experience, setExperience] = useState(DEFAULT_EXPERIENCE);
   const [stars, setStars] = useState([{ ...DEFAULT_STAR }]);
   const [target, setTarget] = useState({ industry: "", company: "", job: "" });
   const [uploads, setUploads] = useState({
@@ -162,12 +191,69 @@ export default function Home() {
   });
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [activeTab, setActiveTab] = useState("activities");
   const [copied, setCopied] = useState(false);
   const [discFile, setDiscFile] = useState(null);
+  const [hasSavedData, setHasSavedData] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
   const discRef = useRef(null);
 
   const fileRefs = {
+    porter:  [useRef(null), useRef(null), useRef(null)],
+    pest:    [useRef(null), useRef(null), useRef(null)],
+    finance: [useRef(null), useRef(null), useRef(null)],
+    news:    [useRef(null), useRef(null), useRef(null)],
+    etc:     [useRef(null), useRef(null), useRef(null)],
+  };
+
+  // 앱 시작 시 저장된 데이터 불러오기
+  useEffect(() => {
+    const savedProfile = loadFromStorage(STORAGE_KEY_PROFILE, null);
+    const savedExperience = loadFromStorage(STORAGE_KEY_EXPERIENCE, null);
+    const savedStars = loadFromStorage(STORAGE_KEY_STARS, null);
+    if (savedProfile) { setProfile(savedProfile); setHasSavedData(true); }
+    if (savedExperience) setExperience(savedExperience);
+    if (savedStars) setStars(savedStars);
+  }, []);
+
+  // profile 변경 시 자동 저장
+  useEffect(() => {
+    const hasAny = Object.values(profile).some(v => v.trim() !== "");
+    if (hasAny) {
+      saveToStorage(STORAGE_KEY_PROFILE, profile);
+      setHasSavedData(true);
+      showSaveMsg();
+    }
+  }, [profile]);
+
+  // experience 변경 시 자동 저장
+  useEffect(() => {
+    saveToStorage(STORAGE_KEY_EXPERIENCE, experience);
+  }, [experience]);
+
+  // stars 변경 시 자동 저장
+  useEffect(() => {
+    saveToStorage(STORAGE_KEY_STARS, stars);
+  }, [stars]);
+
+  const showSaveMsg = () => {
+    setSaveMsg("자동 저장됨");
+    setTimeout(() => setSaveMsg(""), 2000);
+  };
+
+  const handleReset = () => {
+    if (!confirm("저장된 개인정보, 활동, 경험스토리를 모두 초기화할까요?")) return;
+    localStorage.removeItem(STORAGE_KEY_PROFILE);
+    localStorage.removeItem(STORAGE_KEY_EXPERIENCE);
+    localStorage.removeItem(STORAGE_KEY_STARS);
+    setProfile(DEFAULT_PROFILE);
+    setExperience(DEFAULT_EXPERIENCE);
+    setStars([{ ...DEFAULT_STAR }]);
+    setHasSavedData(false);
+  };
+
+  const fileRefs2 = {
     porter:  [useRef(null), useRef(null), useRef(null)],
     pest:    [useRef(null), useRef(null), useRef(null)],
     finance: [useRef(null), useRef(null), useRef(null)],
@@ -276,6 +362,105 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // DOC 다운로드 (docx 라이브러리 CDN 동적 로드)
+  const handleDownloadDoc = async () => {
+    if (!result || downloading) return;
+    setDownloading(true);
+    try {
+      // docx 라이브러리 동적 로드
+      if (!window.docx) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://unpkg.com/docx@8.5.0/build/index.js";
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = window.docx;
+
+      // 결과 텍스트를 버전별로 파싱
+      const versions = result.split(/(?=【버전)/).filter(v => v.trim());
+
+      const children = [];
+
+      // 제목
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: "지원동기 - WhyUs AI 생성 결과", bold: true, size: 32, font: "Malgun Gothic" })],
+          spacing: { after: 200 },
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: `지원기업: ${target.company || "-"}  |  희망직무: ${target.job || "-"}  |  지원자: ${profile.name || "-"}`, size: 20, color: "64748B", font: "Malgun Gothic" })],
+          spacing: { after: 400 },
+        }),
+      );
+
+      versions.forEach((versionText, i) => {
+        const lines = versionText.trim().split("\n");
+        const titleLine = lines[0].trim();
+        const bodyLines = lines.slice(1).join("\n").trim();
+
+        // 버전 제목
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: titleLine, bold: true, size: 26, color: "1E293B", font: "Malgun Gothic" })],
+            spacing: { before: i === 0 ? 0 : 400, after: 200 },
+            border: { bottom: { style: "single", size: 4, color: "E2E8F0", space: 4 } },
+          })
+        );
+
+        // 본문 단락 분리
+        const paragraphs = bodyLines.split(/\n\n+/).filter(p => p.trim());
+        paragraphs.forEach(para => {
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: para.trim(), size: 22, font: "Malgun Gothic" })],
+              spacing: { after: 160 },
+              alignment: AlignmentType.JUSTIFIED,
+            })
+          );
+        });
+      });
+
+      // 주의 문구
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: "⚠️ AI가 생성한 초안입니다. 실제 제출 전 반드시 본인의 경험과 언어로 수정하세요.", size: 18, color: "94A3B8", font: "Malgun Gothic" })],
+          spacing: { before: 400 },
+        })
+      );
+
+      const doc = new Document({
+        sections: [{
+          properties: {
+            page: {
+              size: { width: 11906, height: 16838 }, // A4
+              margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+            },
+          },
+          children,
+        }],
+      });
+
+      const buffer = await Packer.toBuffer(doc);
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `지원동기_${target.company || "WhyUs"}_${profile.name || ""}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert("다운로드 중 오류가 발생했습니다. 다시 시도해 주세요.");
+      console.error(e);
+    }
+    setDownloading(false);
+  };
+
+  // 저장된 데이터가 있는 스텝인지 (0,1,2만 저장)
+  const isSavedStep = step === 0 || step === 1 || step === 2;
+
   return (
     <div>
       <style>{css}</style>
@@ -310,11 +495,22 @@ export default function Home() {
             })}
           </div>
 
+          {/* 자동 저장 배너 (step 0,1,2에서만 표시) */}
+          {isSavedStep && hasSavedData && (
+            <div className="save-banner">
+              <span className="save-banner-text">
+                💾 개인정보·활동·경험스토리가 자동 저장됩니다
+                {saveMsg && <span style={{ color: "#10B981", marginLeft: "6px" }}>✓ {saveMsg}</span>}
+              </span>
+              <button className="reset-link" onClick={handleReset}>초기화</button>
+            </div>
+          )}
+
           {/* STEP 0: 개인프로필 */}
           {step === 0 && (
             <div className="fade-up">
               <p className="page-title">기본 정보 입력</p>
-              <p className="page-desc">입력할수록 더 정확한 지원동기가 만들어져요.</p>
+              <p className="page-desc">입력할수록 더 정확한 지원동기가 만들어져요. 브라우저를 닫아도 자동 저장돼요.</p>
               <div className="card">
                 <div className="grid-2">
                   {[["이름", "name", "홍길동"], ["전공", "major", "경영학과"], ["부전공", "minor", "데이터사이언스"], ["학점 (4.5기준)", "gpa", "3.8"]].map(([lbl, key, ph]) => (
@@ -367,7 +563,7 @@ export default function Home() {
           {step === 1 && (
             <div className="fade-up">
               <p className="page-title">활동·자격·어학</p>
-              <p className="page-desc">경험이 많을수록 더 풍부한 지원동기가 만들어져요.</p>
+              <p className="page-desc">경험이 많을수록 더 풍부한 지원동기가 만들어져요. 자동 저장됩니다.</p>
               <div className="tabs">
                 {[{ key: "activities", label: "🎯 대내외활동" }, { key: "certs", label: "📜 자격증" }, { key: "languages", label: "🌏 외국어" }].map(({ key, label }) => (
                   <button key={key} className={"tab-btn" + (activeTab === key ? " active" : "")} onClick={() => setActiveTab(key)}>{label}</button>
@@ -465,7 +661,7 @@ export default function Home() {
           {step === 2 && (
             <div className="fade-up">
               <p className="page-title">경험스토리 (STAR 기법)</p>
-              <p className="page-desc">Situation → Task → Action → Result 순서로 경험을 작성하면 지원동기에 자동 반영됩니다.</p>
+              <p className="page-desc">Situation → Task → Action → Result 순서로 경험을 작성하면 지원동기에 자동 반영됩니다. 자동 저장됩니다.</p>
               <div style={{ display: "flex", gap: "6px", marginBottom: "1.25rem", flexWrap: "wrap" }}>
                 {[
                   { label: "S", name: "Situation · 상황", cls: "star-s" },
@@ -505,7 +701,7 @@ export default function Home() {
           {step === 3 && (
             <div className="fade-up">
               <p className="page-title">희망 산업 / 기업 / 직무</p>
-              <p className="page-desc">지원하려는 산업, 기업, 직무를 입력해 주세요.</p>
+              <p className="page-desc">지원하려는 산업, 기업, 직무를 입력해 주세요. (매번 새로 입력)</p>
               <div className="card">
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   <div>
@@ -656,6 +852,9 @@ export default function Home() {
                   </div>
                   <div className="result-box">{result}</div>
                   <div className="result-note">⚠️ AI가 생성한 초안입니다. 실제 제출 전 반드시 본인의 경험과 언어로 수정하세요.</div>
+                  <button className="download-btn" onClick={handleDownloadDoc} disabled={downloading}>
+                    {downloading ? "⏳ 다운로드 중..." : "📄 Word 파일로 다운로드 (.docx)"}
+                  </button>
                 </div>
               )}
             </div>
