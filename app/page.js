@@ -188,6 +188,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("activities");
   const [copied, setCopied] = useState(false);
   const [discFile, setDiscFile] = useState(null);
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const discRef = useRef(null);
   const [saveMsg, setSaveMsg] = useState("");
 
@@ -321,13 +323,25 @@ export default function Home() {
       "지원동기 3개 버전만 작성해 주세요. 추가 설명은 불필요합니다.";
 
     try {
-      const response = await fetch("/api/generate", {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey.trim(),
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 3000,
+          messages: [{ role: "user", content: prompt }],
+        }),
       });
       const data = await response.json();
-      setResult(data.content?.map(b => b.text || "").join("") || "생성에 실패했습니다.");
+      if (data.error) {
+        setResult("API 오류: " + data.error.message + "\nAPI 키를 다시 확인해 주세요.");
+      } else {
+        setResult(data.content?.map(b => b.text || "").join("") || "생성에 실패했습니다.");
+      }
     } catch (e) {
       setResult("오류가 발생했습니다. 다시 시도해 주세요.");
     }
@@ -694,6 +708,23 @@ export default function Home() {
             <div className="fade-up">
               <p className="page-title">지원동기 생성</p>
               <p className="page-desc">입력한 정보를 AI가 분석해 맞춤형 지원동기 3가지를 작성해드려요.</p>
+              <div className="api-key-box">
+                <div className="api-key-title">🔑 Anthropic API 키 입력</div>
+                <div className="api-key-desc">
+                  본인의 Anthropic API 키를 입력해야 지원동기를 생성할 수 있어요.<br />
+                  API 키는 이 페이지에 저장되지 않으며 생성 시에만 사용됩니다.
+                </div>
+                <div className="api-key-row">
+                  <input className="api-key-input" type={showKey ? "text" : "password"}
+                    placeholder="sk-ant-api03-..." value={apiKey} onChange={e => setApiKey(e.target.value)} />
+                  <button className="api-key-toggle" onClick={() => setShowKey(v => !v)}>
+                    {showKey ? "🙈 숨기기" : "👁 보기"}
+                  </button>
+                </div>
+                <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" className="api-key-link">
+                  👉 API 키가 없으신가요? console.anthropic.com 에서 무료로 발급받으세요
+                </a>
+              </div>
               <div className="card">
                 <div className="summary-grid">
                   {[
@@ -708,7 +739,7 @@ export default function Home() {
                     </div>
                   ))}
                 </div>
-                <button className="generate-btn" onClick={generateMotivation} disabled={loading}>
+                <button className="generate-btn" onClick={generateMotivation} disabled={loading || !apiKey.trim()}>
                   {loading ? (
                     <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <div className="spinner" /> AI가 작성 중입니다...
