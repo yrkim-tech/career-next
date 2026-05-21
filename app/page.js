@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const STEPS = [
   { id: "profile", label: "개인프로필", icon: "👤" },
@@ -124,6 +124,12 @@ const css = `
   .summary-item { background: white; border-radius: 14px; padding: 12px; text-align: center; border: 1px solid #F1F5F9; }
   .summary-label { font-size: 10px; color: #94A3B8; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 4px; }
   .summary-value { font-size: 13px; font-weight: 700; color: #1E293B; }
+  .save-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; padding: 10px 14px; background: #F0FDF8; border: 1px solid #D1FAE5; border-radius: 12px; }
+  .auto-save-badge { font-size: 12px; color: #065F46; font-weight: 500; display: flex; align-items: center; gap: 4px; }
+  .clear-btn { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border: 1.5px solid #FEE2E2; border-radius: 8px; background: white; color: #EF4444; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; }
+  .clear-btn:hover { background: #FFF1F2; }
+  .doc-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 10px; background: #1E3A8A; color: white; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .doc-btn:hover { background: #1e40af; }
 
   .generate-btn { width: 100%; padding: 14px; border: none; border-radius: 14px; background: linear-gradient(135deg, #1E293B 0%, #334155 100%); color: white; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 12px rgba(30,41,59,0.3); }
   .generate-btn:hover { background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); transform: translateY(-1px); }
@@ -153,13 +159,22 @@ const css = `
 
 export default function Home() {
   const [step, setStep] = useState(0);
-  const [profile, setProfile] = useState({ name: "", major: "", minor: "", grade: "", gender: "", gpa: "", disc: "" });
-  const [experience, setExperience] = useState({
+
+  // localStorage에서 저장된 데이터 불러오기
+  const loadSaved = (key, defaultVal) => {
+    try {
+      const saved = localStorage.getItem("whyus_" + key);
+      return saved ? JSON.parse(saved) : defaultVal;
+    } catch { return defaultVal; }
+  };
+
+  const [profile, setProfile] = useState(() => loadSaved("profile", { name: "", major: "", minor: "", grade: "", gender: "", gpa: "", disc: "" }));
+  const [experience, setExperience] = useState(() => loadSaved("experience", {
     activities: [{ type: "", name: "", period: "", description: "" }],
     certs: [{ name: "", grade: "", year: "" }],
     languages: [{ lang: "", test: "", score: "" }],
-  });
-  const [stars, setStars] = useState([{ ...DEFAULT_STAR }]);
+  }));
+  const [stars, setStars] = useState(() => loadSaved("stars", [{ ...DEFAULT_STAR }]));
   const [target, setTarget] = useState({ industry: "", company: "", job: "" });
   const [uploads, setUploads] = useState({
     porter:  { files: [], text: "", links: [""] },
@@ -174,6 +189,47 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [discFile, setDiscFile] = useState(null);
   const discRef = useRef(null);
+  const [saveMsg, setSaveMsg] = useState("");
+
+  // 자동 저장 - profile, experience, stars 변경 시 저장
+  useEffect(() => {
+    try { localStorage.setItem("whyus_profile", JSON.stringify(profile)); } catch {}
+  }, [profile]);
+  useEffect(() => {
+    try { localStorage.setItem("whyus_experience", JSON.stringify(experience)); } catch {}
+  }, [experience]);
+  useEffect(() => {
+    try { localStorage.setItem("whyus_stars", JSON.stringify(stars)); } catch {}
+  }, [stars]);
+
+  // 저장 초기화
+  const clearSaved = () => {
+    ["profile", "experience", "stars"].forEach(k => {
+      try { localStorage.removeItem("whyus_" + k); } catch {}
+    });
+    setProfile({ name: "", major: "", minor: "", grade: "", gender: "", gpa: "", disc: "" });
+    setExperience({
+      activities: [{ type: "", name: "", period: "", description: "" }],
+      certs: [{ name: "", grade: "", year: "" }],
+      languages: [{ lang: "", test: "", score: "" }],
+    });
+    setStars([{ ...DEFAULT_STAR }]);
+    setSaveMsg("초기화 완료!");
+    setTimeout(() => setSaveMsg(""), 2000);
+  };
+
+  // DOC 다운로드
+  const downloadDoc = () => {
+    if (!result) return;
+    const content = result;
+    const blob = new Blob(["\ufeff" + content], { type: "application/msword;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = (target.company || "지원동기") + "_WhyUsAI.doc";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const fileRefs = {
     porter:  [useRef(null), useRef(null), useRef(null)],
@@ -323,6 +379,10 @@ export default function Home() {
             <div className="fade-up">
               <p className="page-title">기본 정보 입력</p>
               <p className="page-desc">입력할수록 더 정확한 지원동기가 만들어져요.</p>
+              <div className="save-bar">
+                <span className="auto-save-badge">💾 자동저장 중 — 다음에 접속해도 유지돼요</span>
+                <button className="clear-btn" onClick={clearSaved}>🗑 전체 초기화</button>
+              </div>
               <div className="card">
                 <div className="grid-2">
                   {[["이름", "name", "홍길동"], ["전공", "major", "경영학과"], ["부전공", "minor", "데이터사이언스"], ["학점 (4.5기준)", "gpa", "3.8"]].map(([lbl, key, ph]) => (
@@ -660,7 +720,10 @@ export default function Home() {
                 <div className="card">
                   <div className="result-header">
                     <div className="result-title">📝 생성된 지원동기</div>
-                    <button className="copy-btn" onClick={handleCopy}>{copied ? "✓ 복사됨!" : "📋 복사"}</button>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button className="copy-btn" onClick={handleCopy}>{copied ? "✓ 복사됨!" : "📋 복사"}</button>
+                      <button className="doc-btn" onClick={downloadDoc}>📄 DOC 다운로드</button>
+                    </div>
                   </div>
                   <div className="result-box">{result}</div>
                   <div className="result-note">⚠️ AI가 생성한 초안입니다. 실제 제출 전 반드시 본인의 경험과 언어로 수정하세요.</div>
